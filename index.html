@@ -1832,10 +1832,10 @@ function adoptNewMap(id){
   Array.from(S.els.values()).forEach(e=>e.remove()); S.els.clear();
   Array.from(S.sheetEls.values()).forEach(e=>e.remove()); S.sheetEls.clear();
   S.imgCache.clear(); S.sel=null; S.selLink=null; S.dim.clear();
-  loadMap(id);
+  window.RecallMap.loadMap(id);
 }
 function serialize(){ S.doc.updatedAt=Date.now(); return JSON.stringify(S.doc); }
-function markDirty(){ touched=true; setSave("busy","saving…"); clearTimeout(saveT); saveT=setTimeout(save,700); }
+function markDirty(){ touched=true; setSave("busy","saving…"); clearTimeout(saveT); saveT=setTimeout(()=>window.RecallMap.save(),700); }
 async function save(){
   let json;
   try{ json=serialize(); }catch(e){ setSave("warn","couldn’t save"); return; }
@@ -2382,6 +2382,7 @@ document.addEventListener("keydown",e=>{
     renderNodes(); select(sib.id); markDirty(); editTitle(sib.id); return;
   }
   if(e.key==="Delete"||e.key==="Backspace"){ e.preventDefault(); $("#dwDel").click(); return; }
+  if(e.key==="s" && (e.ctrlKey||e.metaKey)){ e.preventDefault(); window.RecallMap.save(); return; }
   if(e.key==="e"||e.key==="E"){ e.preventDefault(); editTitle(S.sel); return; }
   if(e.key===" "){ e.preventDefault(); drawer.classList.contains("open")?closeDrawer():fillDrawer(); return; }
   if(e.key==="l"||e.key==="L"){ startLink(S.sel); return; }
@@ -2432,7 +2433,7 @@ window.RecallMap = {
 /* ---------------- boot ---------------- */
 (function boot(){
   loadIndex();
-  loadMap(S.index.current);
+  window.RecallMap.loadMap(S.index.current);
   const isS = S.doc.sample;
   if(isS){
     showNotice("This is a sample map","Import your resume to replace it — or click a card to see how the notes, questions and arrows work.");
