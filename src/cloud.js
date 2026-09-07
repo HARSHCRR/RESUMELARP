@@ -13,6 +13,8 @@ import { createClient } from '@supabase/supabase-js';
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+const MAX_CLOUD_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5 MB limit
+
 let supabase = null;
 let currentUser = null;
 let realtimeChannel = null;
@@ -38,6 +40,25 @@ function initSupabase() {
   return true;
 }
 
+// ── Security: HTML escaping ────────────────────────────────
+
+function escapeHtml(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  // Only allow https:// URLs for avatars
+  if (url.startsWith('https://')) return url;
+  return '';
+}
+
 // ── Auth ───────────────────────────────────────────────────
 
 async function signInWithGoogle() {
@@ -61,10 +82,38 @@ async function signInWithGitHub() {
 async function signOut() {
   if (!supabase) return;
   unsubscribeRealtime();
+
   const { error } = await supabase.auth.signOut();
   if (error) console.error('[cloud] Sign-out error:', error.message);
   currentUser = null;
+
+  // ── SECURITY: Clear all user data from localStorage ──
+  clearLocalUserData();
+
+  // ── Reset the canvas to a clean sample doc ──
+  const app = window.RecallMap;
+  if (app) {
+    const freshDoc = app.sampleDoc();
+    app.adopt(freshDoc);
+    app.setSave('ok', 'signed out');
+  }
+
   updateAuthUI(null);
+}
+
+/**
+ * Clears ALL recallmap.* keys from localStorage.
+ * Called on sign-out so no private data remains in the browser.
+ */
+function clearLocalUserData() {
+  const keysToRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('recallmap.')) {
+      keysToRemove.push(key);
+    }
+  }
+  keysToRemove.forEach(k => localStorage.removeItem(k));
 }
 
 function onAuthStateChange(callback) {
@@ -75,9 +124,8 @@ function onAuthStateChange(callback) {
     if (callback) callback(event, currentUser);
 
     if (event === 'SIGNED_IN' && currentUser) {
-      // Sync local maps to cloud on first sign-in
-      await syncLocalMapsToCloud();
-      await refreshCloudMaps();
+      // Fetch cloud maps and load them onto the canvas
+      await loadCloudDataOntoCanvas();
     }
     if (event === 'SIGNED_OUT') {
       currentUser = null;
@@ -93,14 +141,14 @@ function updateAuthUI(user) {
   if (!authArea) return;
 
   if (user) {
-    const avatar = user.user_metadata?.avatar_url || '';
-    const name = user.user_metadata?.full_name || user.email || 'User';
-    const initial = name.charAt(0).toUpperCase();
+    const avatar = sanitizeUrl(user.user_metadata?.avatar_url);
+    const name = escapeHtml(user.user_metadata?.full_name || user.email || 'User');
+    const initial = escapeHtml((user.user_metadata?.full_name || user.email || 'U').charAt(0).toUpperCase());
 
     authArea.innerHTML = `
       <div class="auth-user" id="authUser">
         ${avatar
-          ? `<img class="auth-avatar" src="${avatar}" alt="${name}" title="${name}" />`
+          ? `<img class="auth-avatar" src="${escapeHtml(avatar)}" alt="${name}" title="${name}" />`
           : `<span class="auth-avatar auth-initial" title="${name}">${initial}</span>`
         }
         <button class="btn ghost sm" id="bLogout" style="font-size:11px;height:24px;padding:0 8px">Sign out</button>
@@ -111,7 +159,7 @@ function updateAuthUI(user) {
 
     // Update save chip
     const app = window.RecallMap;
-    if (app) app.setSave('ok', 'cloud · ' + (user.email || 'signed in'));
+    if (app) app.setSave('ok', 'cloud · ' + escapeHtml(user.email || 'signed in'));
   } else {
     authArea.innerHTML = `
       <button class="btn ghost sm" id="bLogin" style="font-size:11px;height:24px;padding:0 10px">Sign in</button>
@@ -175,6 +223,16 @@ async function loadMapByShareCode(code) {
 
 async function saveCloudMap(cloudId, title, docData) {
   if (!isReady()) return null;
+
+  // ── SIZE GUARD ──
+  const payloadStr = JSON.stringify(docData);
+  if (payloadStr.length > MAX_CLOUD_PAYLOAD_BYTES) {
+    console.warn('[cloud] Payload too large:', (payloadStr.length / 1024 / 1024).toFixed(1) + 'MB');
+    const app = window.RecallMap;
+    if (app) app.setSave('warn', 'too large for cloud (' + (payloadStr.length / 1024 / 1024).toFixed(1) + 'MB)');
+    return null;
+  }
+
   suppressNextSync = true;
 
   const payload = {
@@ -203,6 +261,15 @@ async function saveCloudMap(cloudId, title, docData) {
 
 async function createCloudMap(title, docData) {
   if (!isReady()) return null;
+
+  // ── SIZE GUARD ──
+  const payloadStr = JSON.stringify(docData);
+  if (payloadStr.length > MAX_CLOUD_PAYLOAD_BYTES) {
+    console.warn('[cloud] Payload too large for create:', (payloadStr.length / 1024 / 1024).toFixed(1) + 'MB');
+    const app = window.RecallMap;
+    if (app) app.setSave('warn', 'too large for cloud');
+    return null;
+  }
 
   const { data, error } = await supabase
     .from('maps')
@@ -250,9 +317,6 @@ function getShareUrl(shareCode) {
 
 async function addCollaborator(cloudId, email, role = 'editor') {
   if (!isReady()) return false;
-  // Look up user by email — this requires the user to have an account
-  const { data: users } = await supabase.auth.admin?.listUsers?.();
-  // For simplicity, we'll use the share link approach instead
   console.warn('[cloud] addCollaborator by email not implemented — use share links');
   return false;
 }
@@ -337,16 +401,118 @@ function updatePresenceUI(state) {
   }
 
   el.hidden = false;
+  // ── SECURITY: Sanitize all presence user data ──
   el.innerHTML = users.map(u => {
-    if (u.avatar) {
-      return `<img class="presence-dot" src="${u.avatar}" title="${u.name || u.email}" />`;
+    const safeAvatar = sanitizeUrl(u.avatar);
+    const safeName = escapeHtml(u.name || u.email || '?');
+    if (safeAvatar) {
+      return `<img class="presence-dot" src="${escapeHtml(safeAvatar)}" title="${safeName}" />`;
     }
-    const initial = (u.name || u.email || '?').charAt(0).toUpperCase();
-    return `<span class="presence-dot presence-initial" title="${u.name || u.email}">${initial}</span>`;
+    const initial = escapeHtml((u.name || u.email || '?').charAt(0).toUpperCase());
+    return `<span class="presence-dot presence-initial" title="${safeName}">${initial}</span>`;
   }).join('');
 }
 
-// ── Sync local → cloud ────────────────────────────────────
+// ── Normalize timestamps for comparison ────────────────────
+
+function toUnixMs(ts) {
+  if (!ts) return 0;
+  if (typeof ts === 'number') return ts;
+  // ISO string or other parseable format
+  const parsed = new Date(ts).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+// ── Core: Load cloud data onto canvas (on sign-in) ────────
+
+async function loadCloudDataOntoCanvas() {
+  if (!isReady()) return;
+  const app = window.RecallMap;
+  if (!app) return;
+
+  try {
+    // 1. Fetch ALL maps for this user from Supabase
+    const cloudMaps = await loadCloudMaps();
+
+    if (!cloudMaps.length) {
+      // No cloud maps yet — sync current local maps to cloud (first-time user)
+      await syncLocalMapsToCloud();
+      return;
+    }
+
+    // 2. Clear old localStorage data (we'll repopulate from cloud)
+    clearLocalUserData();
+
+    // 3. Rebuild the local index entirely from cloud data
+    const newIndex = { current: null, maps: {} };
+    let mostRecent = null;
+    let mostRecentTime = 0;
+
+    for (const cm of cloudMaps) {
+      const localId = cm.id; // Use cloud UUID as local ID for consistency
+      const updatedMs = toUnixMs(cm.updated_at);
+
+      newIndex.maps[localId] = {
+        id: localId,
+        title: cm.title,
+        updated: updatedMs,
+        cloudId: cm.id,
+        cloudShareCode: cm.share_code,
+        isPublic: cm.is_public,
+      };
+
+      if (updatedMs > mostRecentTime) {
+        mostRecentTime = updatedMs;
+        mostRecent = localId;
+      }
+    }
+
+    // Set the most recently updated map as current
+    newIndex.current = mostRecent || Object.keys(newIndex.maps)[0];
+
+    // 4. Save the rebuilt index
+    try {
+      localStorage.setItem('recallmap.index', JSON.stringify(newIndex));
+    } catch (e) { /* localStorage might be full */ }
+
+    // 5. Load the current map's full data from cloud
+    const currentMeta = newIndex.maps[newIndex.current];
+    if (currentMeta?.cloudId) {
+      const fullMap = await loadCloudMap(currentMeta.cloudId);
+      if (fullMap?.data) {
+        // Cache it locally
+        try {
+          localStorage.setItem('recallmap.data.' + newIndex.current, JSON.stringify(fullMap.data));
+        } catch (e) { /* ok */ }
+
+        // Update the app's internal state
+        app.loadIndex(); // re-read the index we just wrote
+        app.adopt(fullMap.data);
+        app.setSave('ok', 'synced · cloud');
+
+        // Update the internal map ID
+        const state = app.getState();
+        if (state) {
+          state.mapId = newIndex.current;
+          state.index = newIndex;
+        }
+
+        // Update doc title in the UI
+        const docTitle = document.querySelector('#docTitle span');
+        if (docTitle) docTitle.textContent = fullMap.data.title || currentMeta.title || 'Untitled';
+
+        // Start real-time subscription
+        subscribeToMap(currentMeta.cloudId);
+      }
+    }
+
+    console.log('[cloud] Loaded', cloudMaps.length, 'maps from cloud');
+  } catch (e) {
+    console.error('[cloud] loadCloudDataOntoCanvas error:', e);
+  }
+}
+
+// ── Sync local → cloud (for first-time users) ─────────────
 
 async function syncLocalMapsToCloud() {
   if (!isReady()) return;
@@ -355,10 +521,6 @@ async function syncLocalMapsToCloud() {
 
   const index = app.getIndex();
   if (!index || !index.maps) return;
-
-  // Check for maps that exist locally but not in cloud
-  const cloudMaps = await loadCloudMaps();
-  const cloudTitles = new Set(cloudMaps.map(m => m.title));
 
   for (const [localId, meta] of Object.entries(index.maps)) {
     // Skip if already has a cloud ID linked
@@ -401,7 +563,7 @@ async function refreshCloudMaps() {
     for (const [localId, meta] of Object.entries(index.maps)) {
       if (meta.cloudId === cm.id) {
         meta.title = cm.title;
-        meta.updated = new Date(cm.updated_at).getTime();
+        meta.updated = toUnixMs(cm.updated_at);
         meta.cloudShareCode = cm.share_code;
         meta.isPublic = cm.is_public;
         found = true;
@@ -411,19 +573,15 @@ async function refreshCloudMaps() {
 
     // If cloud map doesn't exist locally, create a local reference
     if (!found) {
-      const localId = Math.random().toString(36).slice(2, 9);
+      const localId = cm.id; // Use cloud UUID as local ID
       index.maps[localId] = {
         id: localId,
         title: cm.title,
-        updated: new Date(cm.updated_at).getTime(),
+        updated: toUnixMs(cm.updated_at),
         cloudId: cm.id,
         cloudShareCode: cm.share_code,
         isPublic: cm.is_public,
       };
-      // Cache the data locally too
-      try {
-        localStorage.setItem('recallmap.data.' + localId, JSON.stringify(cm.data));
-      } catch (e) { /* localStorage might be full */ }
     }
   }
 
@@ -449,7 +607,8 @@ async function cloudSave(localMapId, docJson) {
     if (result) {
       app.setSave('ok', 'saved · cloud');
     } else {
-      app.setSave('warn', 'cloud sync failed');
+      // saveCloudMap already sets warn for size issues
+      if (!app.setSave) return;
     }
   } else {
     // First cloud save — create
@@ -557,19 +716,9 @@ async function boot() {
   if (session?.user) {
     currentUser = session.user;
     updateAuthUI(currentUser);
-    await syncLocalMapsToCloud();
-    await refreshCloudMaps();
 
-    // Subscribe to current map if it has a cloud ID
-    const app = window.RecallMap;
-    if (app) {
-      const index = app.getIndex();
-      const currentId = app.getMapId();
-      const meta = index.maps[currentId];
-      if (meta?.cloudId) {
-        subscribeToMap(meta.cloudId);
-      }
-    }
+    // Load cloud data onto canvas
+    await loadCloudDataOntoCanvas();
   }
 
   // Hook into the app's save cycle
@@ -604,7 +753,7 @@ function hookIntoSave() {
   app._origLoadMap = origLoadMap;
 
   app.loadMap = async function (id) {
-    // First load from local (fast)
+    // First load from local (fast, synchronous render)
     origLoadMap(id);
 
     // Then check cloud for newer version
@@ -612,8 +761,10 @@ function hookIntoSave() {
       const cloudData = await cloudLoad(id);
       if (cloudData) {
         const localDoc = JSON.parse(app.serialize());
+        const cloudTime = toUnixMs(cloudData.updatedAt);
+        const localTime = toUnixMs(localDoc.updatedAt);
         // If cloud is newer, adopt it
-        if ((cloudData.updatedAt || 0) > (localDoc.updatedAt || 0)) {
+        if (cloudTime > localTime) {
           app.adopt(cloudData);
           app.setSave('ok', 'synced · cloud');
         }
@@ -680,6 +831,12 @@ function injectStyles() {
     .share-status {
       font-size:11px; color:var(--faint); font-family:var(--mono);
       margin-top:4px;
+    }
+
+    /* Cloud indicator in map switcher */
+    .msw-cloud {
+      font-size:10px; color:var(--c3); font-family:var(--mono);
+      letter-spacing:.03em; flex:none;
     }
   `;
   document.head.appendChild(style);
@@ -856,6 +1013,7 @@ window.Cloud = {
   signOut,
   loadCloudMaps,
   loadSharedMaps,
+  loadCloudMap,
   saveCloudMap,
   createCloudMap,
   deleteCloudMap,
@@ -866,6 +1024,9 @@ window.Cloud = {
   togglePublic,
   getShareUrl,
   refreshCloudMaps,
+  clearLocalUserData,
+  escapeHtml,
+  sanitizeUrl,
   get currentUser() { return currentUser; },
 };
 

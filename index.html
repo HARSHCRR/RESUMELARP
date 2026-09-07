@@ -2132,7 +2132,7 @@ function countCards(mapId){
     const j=localStorage.getItem("recallmap.data."+mapId);
     if(j){ const d=JSON.parse(j); return Object.keys(d.nodes||{}).length; }
   }catch(e){}
-  return 0;
+  return '?'; // Unknown — data may be in cloud only
 }
 
 function openSwitcher(){
@@ -2153,6 +2153,14 @@ function openSwitcher(){
       const dot = el("span");
       dot.style.cssText = "width:7px;height:7px;border-radius:50%;background:var(--c3);flex:none";
       row.appendChild(dot);
+    }
+
+    /* cloud indicator */
+    if(m.cloudId){
+      const cloudBadge = el("span", "msw-cloud");
+      cloudBadge.textContent = "☁";
+      cloudBadge.title = "Synced to cloud";
+      row.appendChild(cloudBadge);
     }
 
     /* title — click to rename */
@@ -2235,9 +2243,13 @@ function openSwitcher(){
     btnDel.style.cssText = "color:var(--c1);font-size:11px;height:24px;padding:0 8px";
     btnDel.textContent = "✕";
     btnDel.title = "Delete";
-    btnDel.onclick = (ev) => {
+    btnDel.onclick = async (ev) => {
       ev.stopPropagation();
       if(!confirm("Delete map '"+(m.title||"Untitled")+"'?")) return;
+      // Delete from cloud if synced
+      if(m.cloudId && window.Cloud && window.Cloud.isReady()) {
+        await window.Cloud.deleteCloudMap(m.cloudId);
+      }
       delete S.index.maps[m.id];
       localStorage.removeItem("recallmap.data."+m.id);
       if(isCurrent) {
