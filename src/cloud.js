@@ -1028,7 +1028,7 @@ window.Cloud = {
   deleteCloudMap,
   subscribeToMap,
   unsubscribeRealtime,
-  updatePresence,
+  updatePresenceUI,
   
   cloudLoad,
   saveChunk,
