@@ -748,29 +748,9 @@ function hookIntoSave() {
     }
   };
 
-  // Hook into map load to also load from cloud
-  const origLoadMap = app._origLoadMap || app.loadMap;
-  app._origLoadMap = origLoadMap;
-
-  app.loadMap = async function (id) {
-    // First load from local (fast, synchronous render)
-    origLoadMap(id);
-
-    // Then check cloud for newer version
-    if (isReady()) {
-      const cloudData = await cloudLoad(id);
-      if (cloudData) {
-        const localDoc = JSON.parse(app.serialize());
-        const cloudTime = toUnixMs(cloudData.updatedAt);
-        const localTime = toUnixMs(localDoc.updatedAt);
-        // If cloud is newer, adopt it
-        if (cloudTime > localTime) {
-          app.adopt(cloudData);
-          app.setSave('ok', 'synced · cloud');
-        }
-      }
-    }
-  };
+  // Note: We removed the loadMap monkey-patch!
+  // Map loading is now natively handled asynchronously by index.html
+  // via adoptNewMap() -> window.Cloud.cloudLoad()
 }
 
 // ── Inject DOM elements ────────────────────────────────────
@@ -1036,25 +1016,30 @@ async function deleteChunks(sheetId) {
 
 window.Cloud = {
   isReady,
+  initSupabase,
   signInWithGoogle,
   signInWithGitHub,
   signOut,
-  loadCloudMaps,
-  loadSharedMaps,
-  loadCloudMap,
-  saveCloudMap,
+  onAuthStateChange,
+  
   createCloudMap,
+  saveCloudMap,
+  loadCloudMap,
   deleteCloudMap,
-  cloudSave,
-  cloudLoad,
   subscribeToMap,
   unsubscribeRealtime,
-  togglePublic,
+  updatePresence,
+  
+  cloudLoad,
   saveChunk,
   loadChunk,
   deleteChunks,
   getShareUrl,
   refreshCloudMaps,
+  loadCloudMaps,
+  loadSharedMaps,
+  cloudSave,
+  togglePublic,
   clearLocalUserData,
   escapeHtml,
   sanitizeUrl,

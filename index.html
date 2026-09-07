@@ -1814,29 +1814,65 @@ function loadIndex(){
 }
 function saveIndex(){ try{ localStorage.setItem("recallmap.index", JSON.stringify(S.index)); }catch(e){} }
 function loadMap(id){
+  id = id || uid();
   S.mapId = id;
   S.index.current = id;
   saveIndex();
   let local=null;
   try{ const j=localStorage.getItem("recallmap.data."+id); if(j) local=JSON.parse(j); }catch(e){}
+  
   const fresh = !(local&&local.nodes&&Object.keys(local.nodes).length);
-  S.doc = fresh ? sampleDoc() : migrate(local);
+  
+  // CRITICAL FIX: If we know this is a cloud map, but we have no local data,
+  // do NOT create a sample doc, because that would trigger an auto-save
+  // that overwrites the cloud data with the sample doc.
+  const isCloudMapMissingData = fresh && S.index.maps[id] && S.index.maps[id].cloudId;
+  
+  if (isCloudMapMissingData) {
+    S.doc = { _placeholder: true, nodes: {}, links: [], sheets: [] }; // Empty placeholder
+    setSave("warn", "offline — cannot load map");
+  } else {
+    S.doc = fresh ? sampleDoc() : migrate(local);
+    setSave("ok", "ready");
+  }
+  
   reindex(); renderNodes(); applyView();
-  if(fresh){ tidy(); }
-  requestAnimationFrame(()=>{ measure(); if(fresh) tidy(); fit(); });
-  setSave("ok","ready");
+  
+  if (fresh && !isCloudMapMissingData) { 
+    tidy(); // This triggers markDirty() and an auto-save
+  }
+  
+  requestAnimationFrame(()=>{ measure(); if(fresh && !isCloudMapMissingData) tidy(); fit(); });
   const m = S.index.maps[id]; if(m) m.title = S.doc.title;
   saveIndex();
   $("#docTitle span").textContent = S.doc.title;
 }
-function adoptNewMap(id){
+async function adoptNewMap(id){
+  // Check if we need to download this map from the cloud first
+  if (window.Cloud && window.Cloud.isReady() && S.index.maps[id]?.cloudId) {
+    let localData = localStorage.getItem("recallmap.data."+id);
+    if (!localData) {
+      setSave("busy", "downloading…");
+      const cloudData = await window.Cloud.cloudLoad(id);
+      if (cloudData) {
+        localStorage.setItem("recallmap.data."+id, JSON.stringify(cloudData));
+      }
+    }
+  }
+
   Array.from(S.els.values()).forEach(e=>e.remove()); S.els.clear();
   Array.from(S.sheetEls.values()).forEach(e=>e.remove()); S.sheetEls.clear();
   S.imgCache.clear(); S.sel=null; S.selLink=null; S.dim.clear();
   window.RecallMap.loadMap(id);
 }
 function serialize(){ S.doc.updatedAt=Date.now(); return JSON.stringify(S.doc); }
-function markDirty(){ touched=true; setSave("busy","saving…"); clearTimeout(saveT); saveT=setTimeout(()=>window.RecallMap.save(),700); }
+function markDirty(){ 
+  if (S.doc._placeholder) return; // Never save a placeholder!
+  touched=true; 
+  setSave("busy","saving…"); 
+  clearTimeout(saveT); 
+  saveT=setTimeout(()=>window.RecallMap.save(),700); 
+}
 async function save(){
   let json;
   try{ json=serialize(); }catch(e){ setSave("warn","couldn’t save"); return; }
