@@ -1,6 +1,6 @@
 # RESUMELARP 🎭
 
-> *"Trust me bro, I built that"* — An interactive resume recall map for interview prep.
+> *" An interactive resume recall map for interview prep.
 
 Upload your resume, turn it into an interactive mind map, annotate each talking point with STAR stories, drill yourself with flashcards, and track your recall confidence. Works offline, syncs to the cloud when you sign in.
 
