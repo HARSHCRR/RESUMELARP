@@ -1488,7 +1488,7 @@ async function pullImage(id,n){
   return out;
 }
 async function syncImages(){
-  if(!S.dbNS) return;
+  if(!window.Cloud || !window.Cloud.isReady()) return;
   for(const sh of (S.doc.sheets||[])){
     if(sh.kind!=="page"||sh.chunks) continue;
     const src=S.imgCache.get(sh.id)||await idbGet(sh.id).catch(()=>null);
