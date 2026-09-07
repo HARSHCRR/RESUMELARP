@@ -1470,20 +1470,20 @@ async function idbDel(k){ try{ const d=await idbOpen();
 
 const CHUNK=170000, MAX_CHUNKS=14;
 async function pushImage(sh,dataURL){
-  if(!S.dbNS) return 0;
+  if(!window.Cloud || !window.Cloud.isReady()) return 0;
   const n=Math.ceil(dataURL.length/CHUNK);
   if(n>MAX_CHUNKS) return 0;
   for(let i=0;i<n;i++)
-    await S.dbNS.doc("sheets/"+sh.id+"/chunks/c"+i).set({i,s:dataURL.slice(i*CHUNK,(i+1)*CHUNK)});
+    await window.Cloud.saveChunk(sh.id, i, dataURL.slice(i*CHUNK,(i+1)*CHUNK));
   return n;
 }
 async function pullImage(id,n){
-  if(!S.dbNS) return null;
+  if(!window.Cloud || !window.Cloud.isReady()) return null;
   let out="";
   for(let i=0;i<n;i++){
-    const snap=await S.dbNS.doc("sheets/"+id+"/chunks/c"+i).get();
-    if(!snap.exists) return null;
-    out+=(snap.data().s||"");
+    const chunkData = await window.Cloud.loadChunk(id, i);
+    if(!chunkData) return null;
+    out+=chunkData;
   }
   return out;
 }
@@ -1520,8 +1520,9 @@ async function removeSheet(sh){
   for(const id in S.doc.nodes) if(S.doc.nodes[id].anchor && S.doc.nodes[id].anchor.sheet===sh.id)
     S.doc.nodes[id].anchor=null;
   S.imgCache.delete(sh.id); idbDel(sh.id);
-  if(S.dbNS && sh.chunks) for(let i=0;i<sh.chunks;i++)
-    S.dbNS.doc("sheets/"+sh.id+"/chunks/c"+i).delete().catch(()=>{});
+  if(window.Cloud && window.Cloud.isReady() && sh.chunks) {
+    window.Cloud.deleteChunks(sh.id);
+  }
   renderNodes(); markDirty();
 }
 

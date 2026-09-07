@@ -1004,6 +1004,34 @@ function setupAuthModal() {
   });
 }
 
+// ── Image Chunking (PDFs) ──────────────────────────────────
+async function saveChunk(sheetId, chunkIndex, data) {
+  if(!supabase) return;
+  await supabase.from('sheet_chunks').upsert({
+    sheet_id: sheetId,
+    chunk_index: chunkIndex,
+    data: data
+  });
+}
+
+async function loadChunk(sheetId, chunkIndex) {
+  if(!supabase) return null;
+  const { data, error } = await supabase
+    .from('sheet_chunks')
+    .select('data')
+    .eq('sheet_id', sheetId)
+    .eq('chunk_index', chunkIndex)
+    .single();
+  
+  if (error || !data) return null;
+  return data.data;
+}
+
+async function deleteChunks(sheetId) {
+  if(!supabase) return;
+  await supabase.from('sheet_chunks').delete().eq('sheet_id', sheetId);
+}
+
 // ── Export for use by main app ──────────────────────────────
 
 window.Cloud = {
@@ -1022,6 +1050,9 @@ window.Cloud = {
   subscribeToMap,
   unsubscribeRealtime,
   togglePublic,
+  saveChunk,
+  loadChunk,
+  deleteChunks,
   getShareUrl,
   refreshCloudMaps,
   clearLocalUserData,
