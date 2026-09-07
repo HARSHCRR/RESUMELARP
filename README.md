@@ -1,5 +1,8 @@
 # RESUMELARP 🎭
 
+![Uploading 0F4F13DF-B422-474C-84A8-B5F633B88BAF.JPG…]()
+
+
 > *" An interactive resume recall map for interview prep.
 
 Upload your resume, turn it into an interactive mind map, annotate each talking point with STAR stories, drill yourself with flashcards, and track your recall confidence. Works offline, syncs to the cloud when you sign in.
