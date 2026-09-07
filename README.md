@@ -5,6 +5,17 @@
 
 > *" An interactive resume recall map for interview prep.
 
+<div align="center">
+  <img src="docs/curry_resume.jpg" alt="Shooting my shot at Jane Street" width="500"/>
+</div>
+
+### 📈 Resume-Maxxing for the 10x Developer
+Are you tired of sending a 1-page PDF that accurately reflects your completely average contributions? 
+Do you want to LARP as a Principal Engineer who architected a distributed system, even though you just changed a padding value in CSS?
+
+**Welcome to ResumeLarp.** 
+Upload your standard resume and transform it into a ridiculously complex, 4D interactive node graph. When the recruiter asks you how your `<div>` center resolved global latency issues, just show them the graph. They won't understand it, but they *will* respect it. Shoot your shot at Jane Street with the confidence of Steph Curry from half-court.
+
 Upload your resume, turn it into an interactive mind map, annotate each talking point with STAR stories, drill yourself with flashcards, and track your recall confidence. Works offline, syncs to the cloud when you sign in.
 
 ## Features
