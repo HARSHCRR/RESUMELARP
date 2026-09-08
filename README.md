@@ -1,9 +1,8 @@
 # RESUMELARP 🎭
 
-![Uploading 0F4F13DF-B422-474C-84A8-B5F633B88BAF.JPG…]()
-
-
-> *" An interactive resume recall map for interview prep.
+> *"Trust me bro, I built that"* — An interactive resume recall map for interview prep.
+> 
+> **Live Demo:** [resumemaxxing.xyz](https://www.resumemaxxing.xyz/)
 
 <div align="center">
   <img src="docs/curry_resume.jpg" alt="Shooting my shot at Jane Street" width="500"/>
