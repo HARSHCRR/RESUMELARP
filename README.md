@@ -2,7 +2,7 @@
 
 > *"Trust me bro, I built that"* — An interactive resume recall map for interview prep.
 > 
-> **Live Demo:** [resumemaxxing.xyz](https://www.resumemaxxing.xyz/)
+> **Live :** [resumemaxxing.xyz](https://www.resumemaxxing.xyz/)
 
 <div align="center">
   <img src="docs/curry_resume.jpg" alt="Shooting my shot at Jane Street" width="500"/>
