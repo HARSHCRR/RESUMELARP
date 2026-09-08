@@ -1,6 +1,6 @@
 # RESUMELARP 🎭
 
-> *"Trust me bro, I built that"* — An interactive resume recall map for interview prep.
+> ** — An interactive resume recall map for interview prep.
 > 
 > **Live :** [resumemaxxing.xyz](https://www.resumemaxxing.xyz/)
 
